@@ -43,31 +43,31 @@ def connect_and_execute(ssh, host, commands):
     ssh.connect(host)
     for command in commands:
         ssh_stdin, ssh_stdout, ssh_stderr = ssh.exec_command(command)
-
         ssh_stdout.channel.recv_exit_status()
     ssh.close()
 
 
-def parse_python_bash(folder, file):
-    # parse python command
-    os.chdir(folder)
-    with open(file) as f:
-        python_command = re.sub(
-            " +",
-            " ",
-            "".join(f.readlines())
-            .replace("\n", "")
-            .replace("\\", "")
-            .replace("python3", "")
-            .strip(),
-        )
-        gpus_str = ",".join((str(i) for i in range(gpus_per_node)))
-        # fix number of devices
-        python_command = re.sub("--devices [^-]* -", f"--devices {gpus_str} -", python_command)
-        # add arguments to command
-        for i, arg in enumerate(args.extra_script_args, start=1):
-            python_command = python_command.replace(f"${i}", arg)
-    os.chdir("..")
+def parse_python_bash(ssh, host, folder, file):
+    ssh.connect(host)
+    with ssh.open_sftp() as sftp:
+        # parse python command
+        with sftp.open(os.path.join(folder, file)) as f:
+            python_command = re.sub(
+                " +",
+                " ",
+                "".join(f.readlines())
+                .replace("\n", "")
+                .replace("\\", "")
+                .replace("python3", "")
+                .strip(),
+            )
+            gpus_str = ",".join((str(i) for i in range(gpus_per_node)))
+            # fix number of devices
+            python_command = re.sub("--devices [^-]* -", f"--devices {gpus_str} -", python_command)
+            # add arguments to command
+            for i, arg in enumerate(args.extra_script_args, start=1):
+                python_command = python_command.replace(f"${i}", arg)
+    return python_command
 
 
 if __name__ == "__main__":
@@ -96,27 +96,28 @@ if __name__ == "__main__":
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     # clone repo in all hosts
-    if args.github_repo is not None:
+    if args.clone_repo is not None:
+        assert args.github_repo is not None
         assert args.github_user is not None
 
-        if args.clone_repo is None:
+        if args.github_token is None:
             commands = [
                 f"rm -rf {args.github_repo}",
-                f"git checkout {args.github_branch}",
                 f"git clone https://github.com/{args.github_user}/{args.github_repo}.git",
+                f"cd {args.github_repo};git checkout {args.github_branch}",
             ]
         else:
             commands = [
                 f"rm -rf {args.github_repo}",
-                f"git checkout {args.github_branch}",
                 f"git clone https://{args.github_user}:{args.github_token}@github.com/{args.github_user}/{args.github_repo}.git",
+                f"cd {args.github_repo};git checkout {args.github_branch}",
             ]
 
         for host in tqdm(hosts, desc="Cloning repository into nodes"):
             connect_and_execute(ssh, host, commands)
 
     # parse python command
-    python_command = parse_python_bash(args.github_repo, args.bash_file)
+    python_command = parse_python_bash(ssh, hosts[0], args.github_repo, args.bash_file)
 
     # find a free port for distributed
     PORT = find_free_port()
