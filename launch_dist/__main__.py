@@ -74,7 +74,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--hostfile", type=str, default=None, required=True)
     parser.add_argument("--bash_file", type=str, required=True)
-    parser.add_argument("--clone_repo", type=bool, action="store_true")
+    parser.add_argument("--clone_repo", action="store_true")
     parser.add_argument("--github_user", type=str, default=None)
     parser.add_argument("--github_repo", type=str, default=None)
     parser.add_argument("--github_branch", type=str, default=None)
